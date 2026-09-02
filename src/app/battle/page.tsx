@@ -16,7 +16,8 @@ function BattlePageContent() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentRound, setCurrentRound] = useState(0);
-  const [timer, setTimer] = useState(15);
+  const [timer, setTimer] = useState(30);
+  const [sessionTimer, setSessionTimer] = useState(300);
   const [playerHp, setPlayerHp] = useState(100);
   const [opponentHp, setOpponentHp] = useState(100);
   const [hasAnswered, setHasAnswered] = useState(false);
@@ -25,6 +26,7 @@ function BattlePageContent() {
   const [localUser, setLocalUser] = useState<any>(null);
   const [opponent, setOpponent] = useState<any>({ name: 'Opponent', username: 'opponent' });
   const [animationState, setAnimationState] = useState('idle');
+  const [screenFrozen, setScreenFrozen] = useState(false);
   const isChallenger = localUser?.empId === challengerId;
   const { inventory, consumeItem } = useQuizStore();
 
@@ -63,9 +65,9 @@ function BattlePageContent() {
         const oppAnswer = parsedUser.empId === challengerId ? data.p2Answer : data.p1Answer;
         if (!myAnswer || !oppAnswer) return;
         if (myAnswer.isCorrect && oppAnswer.isCorrect) { setAnimationState('both_correct'); }
-        else if (myAnswer.isCorrect && !oppAnswer.isCorrect) { setAnimationState('player_shoot'); setTimeout(() => { if (isMounted) setAnimationState('opponent_damage'); }, 500); }
-        else if (!myAnswer.isCorrect && oppAnswer.isCorrect) { setAnimationState('opponent_shoot'); setTimeout(() => { if (isMounted) setAnimationState('player_damage'); }, 500); }
-        else { setAnimationState('both_shoot'); setTimeout(() => { if (isMounted) setAnimationState('both_damage'); }, 500); }
+          else if (myAnswer.isCorrect && !oppAnswer.isCorrect) { setAnimationState('player_shoot'); setTimeout(() => { if (isMounted) setAnimationState('opponent_damage'); }, 500); }
+          else if (!myAnswer.isCorrect && oppAnswer.isCorrect) { setAnimationState('opponent_shoot'); setTimeout(() => { if (isMounted) setAnimationState('player_damage'); }, 500); }
+          else { setAnimationState('system_zap'); } // BOTH WRONG -> LASER
         setTimeout(() => {
           if (!isMounted) return;
           if (parsedUser.empId === challengerId) { setPlayerHp(data.p1Hp); setOpponentHp(data.p2Hp); }
@@ -75,12 +77,50 @@ function BattlePageContent() {
           setTimeout(() => {
             if (!isMounted) return;
             setAnimationState('idle'); setCurrentRound(prev => prev + 1);
-            setTimer(15); setHasAnswered(false); setSelectedOption(null); setIsCorrect(null);
+            setTimer(30); setHasAnswered(false); setSelectedOption(null); setIsCorrect(null);
           }, 2500);
         } else { setTimeout(() => { if (isMounted) setAnimationState('idle'); }, 2500); }
       });
+      
+      currentSocket.on('screen_freeze_received', (data) => {
+          setScreenFrozen(true);
+          setTimeout(() => setScreenFrozen(false), 10000);
+        });
+        currentSocket.on('ddos_received', (data) => {
+        alert(`[!] INCOMING DDOS FROM ${data.attackerName}! SYSTEM GLITCHING!`);
+        setTimer(prev => Math.max(1, prev - 5));
+      });
+      currentSocket.on('sabotage_received', async (data) => {
+        const { useQuizStore } = require('@/store/quizStore');
+        const st = useQuizStore.getState();
+        if (st.inventory.decoys && st.inventory.decoys > 0) {
+           st.consumeItem('decoys');
+           alert(`[DEFLECTED] Sabotage from ${data.attackerName} was blocked by your DECOY!`);
+           return;
+        }
+        alert(`[!] SABOTAGE DETECTED! Lost ${data.penaltyXp} XP from ${data.attackerName}!`);
+        try {
+          const empId = localStorage.getItem('currentUserEmpId');
+          await fetch('/api/users', {
+             method: 'PATCH',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ empId, inc: { xp: -data.penaltyXp } })
+          });
+        } catch(e) {}
+      });
+
       currentSocket.on('battle_over', async (data) => {
         const iWon = (data.winner === 'challenger' && parsedUser.empId === challengerId) || (data.winner === 'target' && parsedUser.empId !== challengerId);
+        
+        if (data.reason === 'forfeit') {
+          if (data.forfeitedBy !== parsedUser.empId) {
+             alert('Opponent forfeited! You win 300 Coins and 200 XP!');
+             try { await fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empId: parsedUser.empId, inc: { coins: 300, xp: 200 } }) }); } catch {}
+             router.push('/');
+          }
+          return;
+        }
+
         if (iWon) {
           alert('VICTORY! You earned 300 Coins and 200 XP!');
           try { await fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empId: parsedUser.empId, updates: { coins: (parsedUser.coins || 0) + 300, xp: (parsedUser.xp || 0) + 200 } }) }); } catch {}
@@ -90,6 +130,16 @@ function BattlePageContent() {
     });
     return () => { isMounted = false; currentSocket?.disconnect(); };
   }, [matchId, challengerId, targetId, router]);
+
+  useEffect(() => {
+    if (sessionTimer > 0) {
+      const id = setInterval(() => setSessionTimer(p => p - 1), 1000);
+      return () => clearInterval(id);
+    } else if (sessionTimer === 0) {
+      alert("Session Time Limit Reached! The Matrix has collapsed.");
+      window.location.href = '/';
+    }
+  }, [sessionTimer]);
 
   useEffect(() => {
     if (questions.length === 0 || hasAnswered) return;
@@ -107,15 +157,28 @@ function BattlePageContent() {
     setHasAnswered(true);
     socket?.emit('submit_battle_answer', { matchId, empId: localUser?.empId, isCorrect: false, damage: getDmg(currentRound), isChallenger });
   };
-  const handleOptionClick = (option: string) => {
-    if (hasAnswered) return;
-    setHasAnswered(true); setSelectedOption(option);
-    const correct = option === questions[currentRound]?.correctAnswer;
-    setIsCorrect(correct);
-    socket?.emit('submit_battle_answer', { matchId, empId: localUser?.empId, isCorrect: correct, damage: correct ? 0 : getDmg(currentRound), isChallenger });
-  };
+  
+    const handleForfeit = async () => {
+      const confirm = window.confirm("DISCLAIMER: By forfeiting the match, you will lose 200 XP and 100 Coins. Do you wish to proceed?");
+      if (confirm) {
+         try { await fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empId: localUser?.empId, inc: { coins: -100, xp: -200 } }) }); } catch {}
+         alert("You have forfeited. 200 XP and 100 Coins have been deducted.");
+         socket?.emit('player_forfeit', { matchId, empId: localUser?.empId, isChallenger });
+         window.location.href = '/';
+      }
+    };
 
-  if (questions.length === 0 || !localUser) {
+    const handleOptionClick = (option: string) => {
+      if (hasAnswered || screenFrozen) return;
+      setHasAnswered(true); setSelectedOption(option);
+      const ans = questions[currentRound]?.correctAnswer;
+      const correct = option === ans || option.startsWith(ans + '.') || option.startsWith(ans + ')');
+      setIsCorrect(correct);
+      socket?.emit('submit_battle_answer', { matchId, empId: localUser?.empId, isCorrect: correct, damage: correct ? 0 : getDmg(currentRound), isChallenger });
+    };
+
+    if (questions.length === 0 || !localUser) {
+
     return (<div className="h-screen w-screen bg-[#030005] flex items-center justify-center"><p className="text-[#ff0055] font-black tracking-[0.3em] text-xl uppercase animate-pulse">Initializing Matrix Duel...</p></div>);
   }
 
@@ -127,7 +190,23 @@ function BattlePageContent() {
   const bump        = animationState === 'both_correct';
 
   return (
-    <div className="h-screen w-screen bg-[#030005] text-white flex flex-col font-mono overflow-hidden select-none">
+    <div className="h-screen w-screen bg-[#030005] text-white flex flex-col font-mono overflow-hidden select-none relative">
+        {screenFrozen && (
+          <div className="absolute inset-0 z-[100] bg-blue-900/40 backdrop-blur-sm border-[10px] border-blue-500 flex flex-col items-center justify-center pointer-events-auto">
+            <p className="text-4xl md:text-6xl font-black text-blue-300 drop-shadow-[0_0_20px_blue] animate-pulse uppercase tracking-[0.3em] text-center">SYSTEM FROZEN</p>
+            <p className="text-white mt-4 tracking-widest bg-black/50 px-4 py-2 rounded">Controls disabled for 10 seconds</p>
+          </div>
+        )}
+        <AnimatePresence>
+          {animationState === 'system_zap' && (
+            <motion.div key="laser-overlay" className="absolute inset-0 pointer-events-none z-50">
+               <motion.div className="absolute top-0 bottom-[40%] left-[25%] w-[10px] bg-red-500 shadow-[0_0_30px_10px_red]"
+                  initial={{ scaleY: 0, originY: 0 }} animate={{ scaleY: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} />
+               <motion.div className="absolute top-0 bottom-[40%] right-[25%] w-[10px] bg-red-500 shadow-[0_0_30px_10px_red]"
+                  initial={{ scaleY: 0, originY: 0 }} animate={{ scaleY: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       {/* HUD */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#111] bg-[#060606] shrink-0 gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -143,6 +222,7 @@ function BattlePageContent() {
           </div>
         </div>
         <div className="flex flex-col items-center shrink-0">
+          <p className="text-sm text-[#ff0055] font-black tracking-[0.2em] uppercase mb-2 drop-shadow-[0_0_5px_rgba(255,0,85,0.8)]">SESSION: {Math.floor(sessionTimer/60)}:{(sessionTimer%60).toString().padStart(2, '0')}</p>
           <p className="text-[9px] text-gray-600 font-black tracking-[0.2em] uppercase mb-1">ROUND {currentRound + 1}</p>
           <div className={`w-14 h-14 rounded-full border-4 flex items-center justify-center transition-colors ${timer <= 5 ? 'border-[#ff0055] shadow-[0_0_20px_rgba(255,0,85,0.6)]' : 'border-[#222]'}`}>
             <span className={`text-2xl font-black tabular-nums ${timer <= 5 ? 'text-[#ff0055] animate-pulse' : 'text-white'}`}>{timer}</span>
@@ -177,7 +257,7 @@ function BattlePageContent() {
         <motion.div className="flex flex-col items-center z-10"
           animate={bump ? { x: [0, 55, 0] } : playerDmg ? { x: [-10, 10, -10, 10, 0], filter: 'brightness(0.3) sepia(1) hue-rotate(-40deg) saturate(10)' } : { x: 0, filter: 'none' }}
           transition={{ duration: 0.4 }}>
-          <div className="drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+          <div className={`drop-shadow-[0_0_20px_rgba(16,185,129,0.3)] ${playerHp <= 20 ? 'animate-[pulse_0.5s_infinite] drop-shadow-[0_0_20px_rgba(255,0,0,0.8)]' : ''}`}>
             <AvatarSVG avatar={myAvatar} size={130} mini={false} />
           </div>
           <div className="w-24 h-4 mt-1 rounded-[100%] bg-[#10b981]/5 shadow-[0_0_25px_10px_rgba(16,185,129,0.1)]" />
@@ -186,7 +266,7 @@ function BattlePageContent() {
         <motion.div className="flex flex-col items-center z-10"
           animate={bump ? { x: [0, -55, 0] } : opponentDmg ? { x: [-10, 10, -10, 10, 0], filter: 'brightness(0.3) sepia(1) hue-rotate(-40deg) saturate(10)' } : { x: 0, filter: 'none' }}
           transition={{ duration: 0.4 }}>
-          <div className="drop-shadow-[0_0_20px_rgba(255,0,85,0.3)]" style={{ transform: 'scaleX(-1)' }}>
+          <div className={`drop-shadow-[0_0_20px_rgba(255,0,85,0.3)] ${opponentHp <= 20 ? 'animate-[pulse_0.5s_infinite] drop-shadow-[0_0_20px_rgba(255,0,0,0.8)]' : ''}`} style={{ transform: 'scaleX(-1)' }}>
             <AvatarSVG avatar={oppAvatar} size={130} mini={false} />
           </div>
           <div className="w-24 h-4 mt-1 rounded-[100%] bg-[#ff0055]/5 shadow-[0_0_25px_10px_rgba(255,0,85,0.1)]" />
@@ -203,15 +283,18 @@ function BattlePageContent() {
             <div className="grid grid-cols-2 gap-3">
               {currentQ.options.map((option: string, i: number) => {
                 let cls = 'bg-[#0d0d0d] border-[#1c1c1c] text-gray-400 hover:bg-[#141414] hover:border-gray-700 cursor-pointer';
+                const ans = currentQ.correctAnswer;
+                const isCorrectOpt = option === ans || option.startsWith(ans + '.') || option.startsWith(ans + ')');
+                
                 if (hasAnswered) {
-                  if (option === currentQ.correctAnswer) cls = 'bg-[#10b981]/10 border-[#10b981] text-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.2)]';
+                  if (isCorrectOpt) cls = 'bg-[#10b981]/10 border-[#10b981] text-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.2)]';
                   else if (option === selectedOption) cls = 'bg-[#ff0055]/10 border-[#ff0055] text-[#ff0055] shadow-[0_0_15px_rgba(255,0,85,0.2)]';
                   else cls = 'bg-[#080808] border-[#111] text-gray-700 opacity-40 cursor-default';
                 } else if (option === selectedOption) { cls = 'bg-[#161616] border-gray-600 text-white'; }
                 return (
-                  <button key={i} onClick={() => handleOptionClick(option)} disabled={hasAnswered}
+                  <button key={i} onClick={() => handleOptionClick(option)} disabled={hasAnswered || screenFrozen}
                     className={`p-3 md:p-4 rounded border-2 font-mono text-xs md:text-sm transition-all active:scale-95 text-left leading-snug ${cls}`}>
-                    <span className="opacity-40 text-xs font-black mr-2">{String.fromCharCode(65 + i)}.</span>{option}
+                    {option}
                   </button>
                 );
               })}
@@ -221,6 +304,9 @@ function BattlePageContent() {
       </div>
 
       {/* INJECT GADGET DEPLOYMENT BUTTON */}
+      <div className="absolute bottom-6 right-6 z-40">
+        <button onClick={handleForfeit} className="bg-red-900/60 hover:bg-red-600 border border-red-500 text-white px-4 py-2 rounded-full font-mono text-[10px] sm:text-xs tracking-widest transition-all cursor-pointer shadow-[0_0_15px_rgba(255,0,85,0.4)]">FORFEIT MATCH</button>
+      </div>
       <div className="absolute bottom-6 left-6 z-40">
         <button 
           onClick={() => (document.getElementById('battle-inventory-modal') as HTMLDialogElement)?.showModal()}
@@ -243,8 +329,10 @@ function BattlePageContent() {
                    consumeItem(key as any);
                    
                    if (key === 'timeFreezes') {
-                     setTimer(prev => prev + 10);
-                   } else if (key === 'sabotagers') {
+                       setTimer(prev => prev + 10);
+                     } else if (key === 'screenFreezes') {
+                       socket?.emit('player_screen_freeze', { targetId: opponent.empId });
+                     } else if (key === 'sabotagers') {
                      socket?.emit('player_sabotage', { targetId: opponent.empId, penaltyXp: 50 });
                    } else if (key === 'overclocks') {
                      fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empId: localUser?.empId, inc: { xp: 250 } }) });

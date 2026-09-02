@@ -84,8 +84,10 @@ export default function Phase3RealtimeDashboard() {
   };
 
   const triggerDuelCountdown = (matchData?: { challengerId: string, targetId: string }) => {
-    setDuelCountdown(3);
-    let timeLeft = 3;
+    setDuelCountdown(4);
+    const audio = new Audio('/game duel/make_more_sound-321-go-8-bit-video-game-sound-version-1-145007.mp3');
+    audio.play().catch(e => console.log('Audio play failed:', e));
+    let timeLeft = 4;
     const timer = setInterval(() => {
       timeLeft -= 1;
       if (timeLeft > 0) {
@@ -573,14 +575,16 @@ export default function Phase3RealtimeDashboard() {
               <button onClick={() => setShowOperantsList(false)} className="text-gray-500 hover:text-white transition-colors">✕</button>
             </div>
             <div className="max-h-[40vh] overflow-y-auto cyber-scrollbar flex flex-col gap-2">
-              {leaderboard.filter(p => p.empId !== localStorage.getItem('currentUserEmpId') && onlineUsers.includes(p.empId)).map((player, idx) => (
+              {leaderboard.filter(p => p.empId !== localStorage.getItem('currentUserEmpId')).map((player, idx) => {
+                const isOnline = onlineUsers.includes(player.empId);
+                return (
                 <div key={player.empId || idx} className="flex items-center gap-3 bg-[#111] p-2 border border-gray-800/50 rounded hover:border-gray-700 transition-colors">
                   <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-xs overflow-hidden">
                     <MiniAvatar avatar={player.avatar as AvatarState} />
                   </div>
                   <div className="flex flex-col">
                     <span className="text-gray-200 text-sm font-bold">{player.name || `Operant-${idx}`}</span>
-                    <span className="text-green-500 text-[10px] uppercase tracking-wider flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> ONLINE</span>
+                    <span className={`text-[10px] uppercase tracking-wider flex items-center gap-1 ${isOnline ? 'text-green-500' : 'text-gray-500'}`}><span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></span> {isOnline ? 'ONLINE' : 'OFFLINE'}</span>
                   </div>
                   <div className="ml-auto text-green-500 text-xs font-mono">12ms</div>
                   <button 
@@ -593,9 +597,9 @@ export default function Phase3RealtimeDashboard() {
                     ⚔️ CHALLENGE
                   </button>
                 </div>
-              ))}
-              {leaderboard.filter(p => p.empId !== localStorage.getItem('currentUserEmpId') && onlineUsers.includes(p.empId)).length === 0 && (
-                <div className="text-gray-600 text-center py-6 font-mono text-sm">NO OTHER ONLINE OPERANTS DETECTED</div>
+              )})}
+              {leaderboard.filter(p => p.empId !== localStorage.getItem('currentUserEmpId')).length === 0 && (
+                <div className="text-gray-600 text-center py-6 font-mono text-sm">NO OTHER OPERANTS REGISTERED IN SYSTEM</div>
               )}
             </div>
           </div>

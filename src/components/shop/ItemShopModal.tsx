@@ -43,17 +43,34 @@ export default function ItemShopModal({ onClose, players = [], socket }: ItemSho
       price: 50,
       description: 'Scrambles and eliminates 50% of incorrect choices.',
       icon: '🧠',
-      offensive: false
-    },
-    {
-      id: 'chronos-freeze',
-      type: 'timeFreezes' as const,
-      name: 'Chronos Freeze',
-      price: 30,
-      description: 'Freezes question countdown timer for 15 seconds.',
-      icon: '⏱️',
-      offensive: false
-    },
+      offensive: false      },
+      {
+        id: 'auto-sorter',
+        type: 'autoSorters' as const,
+        name: 'Auto-Sorter',
+        price: 80,
+        description: 'Instantly arranges the first 2 options in the correct sequence.',
+        icon: '??',
+        offensive: false
+      },
+      {
+        id: 'chronos-freeze',
+        type: 'timeFreezes' as const,
+        name: 'Chronos Freeze',
+        price: 30,
+        description: 'Freezes question countdown timer for 15 seconds.',
+        icon: '⏳',
+        offensive: false
+      },
+      {
+        id: 'screen-freeze',
+        type: 'screenFreezes' as const,
+        name: 'Glacier Protocol',
+        price: 150,
+        description: 'Freezes the opponent\'s screen for 10 seconds.',
+        icon: '❄️',
+        offensive: true
+      },
     {
       id: 'firewall-shield',
       type: 'shields' as const,
@@ -215,4 +232,6 @@ export default function ItemShopModal({ onClose, players = [], socket }: ItemSho
     </div>
   );
 }
+
+
 

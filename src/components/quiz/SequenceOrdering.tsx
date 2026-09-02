@@ -50,9 +50,10 @@ interface SequenceOrderingProps {
   items: any[];
   onChange: (orderIds: string) => void;
   disabled: boolean;
+  solvedCount?: number;
 }
 
-export default function SequenceOrdering({ items: initialItems, onChange, disabled }: SequenceOrderingProps) {
+export default function SequenceOrdering({ items: initialItems, onChange, disabled, solvedCount = 0 }: SequenceOrderingProps) {
   const [items, setItems] = useState(initialItems);
   const dndId = useId();
 
@@ -69,6 +70,12 @@ export default function SequenceOrdering({ items: initialItems, onChange, disabl
 
   function handleDragEnd(event: DragEndEvent) {
     if (disabled) return;
+    if (solvedCount > 0) {
+      const activeIndex = items.findIndex(i => i.id === event.active.id);
+      if (activeIndex < solvedCount) return;
+      const overIndex = event.over ? items.findIndex(i => i.id === event.over?.id) : -1;
+      if (overIndex !== -1 && overIndex < solvedCount) return;
+    }
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
@@ -103,7 +110,7 @@ export default function SequenceOrdering({ items: initialItems, onChange, disabl
           items={items.map((i: any) => i.id)}
           strategy={verticalListSortingStrategy}
         >
-          {items.map((item: any) => (
+          {items.map((item: any, i: number) => (
             <SortableItem key={item.id} id={item.id} content={item.content || item.text} disabled={disabled} />
           ))}
         </SortableContext>
@@ -111,3 +118,4 @@ export default function SequenceOrdering({ items: initialItems, onChange, disabl
     </div>
   );
 }
+

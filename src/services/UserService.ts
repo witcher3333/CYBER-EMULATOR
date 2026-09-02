@@ -88,9 +88,30 @@ export class UserService {
       throw new Error('empId and updates or inc are required.');
     }
 
+    const users = await this.userRepository.findUsers({ empId });
+    const currentUser = users[0];
+    if (!currentUser) throw new Error('User not found.');
+
     const updateQuery: any = {};
-    if (updates) updateQuery.$set = updates;
-    if (inc) updateQuery.$inc = inc;
+    if (updates) {
+      updateQuery.$set = { ...updates };
+      if (updateQuery.$set.coins !== undefined && updateQuery.$set.coins < 0) {
+        updateQuery.$set.coins = 0;
+      }
+    }
+    
+    if (inc) {
+      for (const [key, val] of Object.entries(inc)) {
+        if (key === 'coins' || key === 'xp') {
+           updateQuery.$set = updateQuery.$set || {};
+           const newVal = (currentUser[key] || 0) + (val as number);
+           updateQuery.$set[key] = Math.max(0, newVal);
+        } else {
+           updateQuery.$inc = updateQuery.$inc || {};
+           updateQuery.$inc[key] = val;
+        }
+      }
+    }
 
     const updatedUser = await this.userRepository.updateUser(empId, updateQuery);
     if (!updatedUser) {

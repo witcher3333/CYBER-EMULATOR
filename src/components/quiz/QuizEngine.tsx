@@ -86,6 +86,8 @@ export default function QuizEngine() {
   const [isSabotaged, setIsSabotaged] = useState(false);
   const [sabotageMessage, setSabotageMessage] = useState<string | null>(null);
     const [eliminatedOptions, setEliminatedOptions] = useState<string[]>([]);
+    const [autoSolvedCount, setAutoSolvedCount] = useState(0);
+    const [currentSequence, setCurrentSequence] = useState<any[]>([]);
   const [socket, setSocket] = useState<any>(null);
 
   const [quizMode, setQuizMode] = useState<'standard' | 'wager'>('standard');
@@ -173,6 +175,8 @@ export default function QuizEngine() {
   // Timer Initialization
   useEffect(() => {
     if (!activeQuestion) return;
+      setAutoSolvedCount(0);
+      setCurrentSequence(activeQuestion.draggableItems || []);
     
     const diff = activeQuestion.difficulty?.toLowerCase() || '';
     let initialTime = 30;
@@ -291,7 +295,8 @@ export default function QuizEngine() {
     
       if (activeQuestion.type === 'sequence' || activeQuestion.type === 'drag_and_drop') {
         try {
-          const orderIds = JSON.parse(selected || '[]');
+          const defaultOrder = JSON.stringify(activeQuestion.draggableItems?.map((i: any) => i.id) || []);
+            const orderIds = JSON.parse(selected || defaultOrder);
           correct = JSON.stringify(orderIds) === JSON.stringify(activeQuestion.correctOrder);
         } catch(e) { correct = false; }
       } else if (selected) {
@@ -491,9 +496,10 @@ export default function QuizEngine() {
 
           {(activeQuestion.type === 'sequence' || activeQuestion.type === 'drag_and_drop') && (
               <SequenceOrdering 
-                items={activeQuestion.items || activeQuestion.draggableItems || []}
-                onChange={(val) => !isSubmitted && setSelectedOption(val)}
+                items={currentSequence.length > 0 ? currentSequence : (activeQuestion.items || activeQuestion.draggableItems || [])}
+                onChange={(val: any) => !isSubmitted && setSelectedOption(val)}
                 disabled={isSubmitted}
+                solvedCount={autoSolvedCount}
               />
             )}
 
@@ -587,13 +593,27 @@ export default function QuizEngine() {
                        } else if (key === 'overclocks') {
                          store.addXP(250);
                        } else if (key === 'hints') {
-                           const wrongOptions = activeQuestion.options?.filter((o: string) => o !== activeQuestion.correctAnswer) || [];
+                           const answer = activeQuestion.correctAnswer || '';
+                           const wrongOptions = activeQuestion.options?.filter((o: string) => !(o === answer || o.startsWith(answer + '.') || o.startsWith(answer + ')') || o.includes(answer))) || [];
                            if (wrongOptions.length > 0) {
                              setEliminatedOptions([wrongOptions[0], wrongOptions[1]].filter(Boolean));
                            }
+                         } else if (key === 'autoSorters') {
+                           if (activeQuestion.type !== 'sequence' && activeQuestion.type !== 'drag_and_drop') {
+                             alert('Auto-Sorters can only be deployed on sequence questions.');
+                             useQuizStore.getState().buyItem('autoSorters', 0);
+                           } else {
+                             const correctIds = activeQuestion.correctOrder.slice(0, 2);
+                             const correctItems = correctIds.map((id: string) => currentSequence.find(i => i.id === id)).filter(Boolean);
+                             const remainingItems = currentSequence.filter(i => !correctIds.includes(i.id));
+                             const newOrder = [...correctItems, ...remainingItems];
+                             setCurrentSequence(newOrder);
+                             setAutoSolvedCount(correctItems.length);
+                             setSelectedOption(JSON.stringify(newOrder.map(i => i.id)));
+                           }
                          } else if (['sabotagers', 'ddosEmps', 'decoys'].includes(key)) {
                            alert('This tactical asset is reserved for 1v1 Multiplayer engagements.');
-                           (store.inventory as any)[key] += 1; // refund
+                           useQuizStore.getState().buyItem(key as any, 0); // refund
                          }
                        
                        (document.getElementById('inventory-modal') as HTMLDialogElement)?.close();
@@ -696,6 +716,12 @@ export default function QuizEngine() {
     </div>
   );
 }
+
+
+
+
+
+
 
 
 

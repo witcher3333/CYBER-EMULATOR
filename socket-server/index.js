@@ -155,73 +155,116 @@ io.on('connection', (socket) => {
       battle.p2Answer = { isCorrect, damage };
     }
 
+    
     battle.answersThisRound++;
     console.log(`[SOCKET_SERVER] AnswersThisRound AFTER: ${battle.answersThisRound}`);
 
+    if (battle.answersThisRound === 1) {
+      // Start fallback timer
+      battle.fallbackTimeout = setTimeout(() => {
+        if (battleRooms.has(matchId)) {
+          const b = battleRooms.get(matchId);
+          if (b.answersThisRound === 1 && b.round === battle.round) {
+            console.log(`[SOCKET_SERVER] Fallback timeout triggered for ${matchId} round ${b.round}`);
+            const missingIsChallenger = !isChallenger;
+            if (missingIsChallenger) b.p1Answer = { isCorrect: false, damage: 15 };
+            else b.p2Answer = { isCorrect: false, damage: 15 };
+            b.answersThisRound = 2;
+            processRound(b, matchId, io);
+          }
+        }
+      }, 15000); // 15s grace period
+    }
+
     // When both players have answered
     if (battle.answersThisRound === 2) {
-      console.log(`[SOCKET_SERVER] Both players answered! Processing round ${battle.round}...`);
-
-      // If both are correct, 0 damage to both (bump animation)
-      if (battle.p1Answer.isCorrect && battle.p2Answer.isCorrect) {
-        battle.p1Answer.damage = 0;
-        battle.p2Answer.damage = 0;
-      }
-
-      // Apply damage: wrong answer player takes damage
-      battle.p1Hp -= battle.p1Answer.damage;
-      battle.p2Hp -= battle.p2Answer.damage;
-
-      // Prevent negative HP
-      battle.p1Hp = Math.max(0, battle.p1Hp);
-      battle.p2Hp = Math.max(0, battle.p2Hp);
-
-      const p1Dead = battle.p1Hp <= 0;
-      const p2Dead = battle.p2Hp <= 0;
-
-      console.log(`[SOCKET_SERVER] After round: P1 HP=${battle.p1Hp}, P2 HP=${battle.p2Hp}. nextRound=${!(p1Dead || p2Dead)}`);
-
-      // Emit update to both players
-      io.to(matchId).emit('battle_update', {
-        p1Hp: battle.p1Hp,
-        p2Hp: battle.p2Hp,
-        nextRound: !(p1Dead || p2Dead),
-        p1Answer: battle.p1Answer,
-        p2Answer: battle.p2Answer
-      });
-
-      if (p1Dead || p2Dead) {
-        let winner = 'draw';
-        if (battle.p1Hp > battle.p2Hp) winner = 'challenger';
-        else if (battle.p2Hp > battle.p1Hp) winner = 'target';
-
-        console.log(`[SOCKET_SERVER] Battle over! Winner: ${winner}`);
-        setTimeout(() => {
-          io.to(matchId).emit('battle_over', { winner });
-          battleRooms.delete(matchId);
-        }, 3000);
-      } else {
-        // Reset for next round
-        battle.answersThisRound = 0;
-        battle.p1Answer = null;
-        battle.p2Answer = null;
-        battle.round++;
-        console.log(`[SOCKET_SERVER] Moving to round ${battle.round}`);
-      }
+      if (battle.fallbackTimeout) clearTimeout(battle.fallbackTimeout);
+      processRound(battle, matchId, io);
     }
   });
 
+  socket.on('player_forfeit', ({ matchId, empId, isChallenger }) => {
+    console.log(`[SOCKET_SERVER] ${empId} forfeited match ${matchId}`);
+    const winner = isChallenger ? 'target' : 'challenger';
+    io.to(matchId).emit('battle_over', { winner, reason: 'forfeit', forfeitedBy: empId });
+    battleRooms.delete(matchId);
+  });
+
+  
   socket.on('disconnect', () => {
-    console.log(`[SOCKET_SERVER] Client disconnected: ${socket.id}`);
+    console.log('[SOCKET_SERVER] Client disconnected:', socket.id);
+    
+    // Check if player was in any battle
+    for (const [matchId, battle] of battleRooms.entries()) {
+      if (battle.p1EmpId === currentEmpId || battle.p2EmpId === currentEmpId) {
+        console.log(`[SOCKET_SERVER] Player ${currentEmpId} disconnected during battle ${matchId}. Forfeiting...`);
+        const winner = battle.p1EmpId === currentEmpId ? 'target' : 'challenger';
+        io.to(matchId).emit('battle_over', { winner, reason: 'forfeit', forfeitedBy: currentEmpId });
+        battleRooms.delete(matchId);
+      }
+    }
+
     if (currentEmpId) {
-      userSockets.delete(currentEmpId);
+      if (userSockets.get(currentEmpId) === socket.id) { userSockets.delete(currentEmpId); }
       // Broadcast updated online users list
       io.emit('online_users', Array.from(userSockets.keys()));
     }
   });
 });
 
-const PORT = process.env.PORT || 3001;
+
+  const processRound = (battle, matchId, io) => {
+    console.log(`[SOCKET_SERVER] Both players answered! Processing round ${battle.round}...`);
+
+    // If both are correct, 0 damage to both (bump animation)
+    if (battle.p1Answer.isCorrect && battle.p2Answer.isCorrect) {
+      battle.p1Answer.damage = 0;
+      battle.p2Answer.damage = 0;
+    }
+
+    // Apply damage: wrong answer player takes damage
+    battle.p1Hp -= battle.p1Answer.damage;
+    battle.p2Hp -= battle.p2Answer.damage;
+
+    // Prevent negative HP
+    battle.p1Hp = Math.max(0, battle.p1Hp);
+    battle.p2Hp = Math.max(0, battle.p2Hp);
+
+    const p1Dead = battle.p1Hp <= 0;
+    const p2Dead = battle.p2Hp <= 0;
+
+    console.log(`[SOCKET_SERVER] After round: P1 HP=${battle.p1Hp}, P2 HP=${battle.p2Hp}. nextRound=${!(p1Dead || p2Dead)}`);
+
+    // Emit update to both players
+    io.to(matchId).emit('battle_update', {
+      p1Hp: battle.p1Hp,
+      p2Hp: battle.p2Hp,
+      nextRound: !(p1Dead || p2Dead),
+      p1Answer: battle.p1Answer,
+      p2Answer: battle.p2Answer
+    });
+
+    if (p1Dead || p2Dead) {
+      let winner = 'draw';
+      if (battle.p1Hp > battle.p2Hp) winner = 'challenger';
+      else if (battle.p2Hp > battle.p1Hp) winner = 'target';
+
+      console.log(`[SOCKET_SERVER] Battle over! Winner: ${winner}`);
+      setTimeout(() => {
+        io.to(matchId).emit('battle_over', { winner });
+        battleRooms.delete(matchId);
+      }, 3000);
+    } else {
+      // Reset for next round
+      battle.answersThisRound = 0;
+      battle.p1Answer = null;
+      battle.p2Answer = null;
+      battle.round++;
+      console.log(`[SOCKET_SERVER] Moving to round ${battle.round}`);
+    }
+  };
+
+  const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 Cyber Simulator Real-Time Socket Server active`);

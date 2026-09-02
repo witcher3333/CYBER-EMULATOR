@@ -29,13 +29,15 @@ interface QuizState {
     decoys: number;
     ddosEmps: number;
     overclocks: number;
+    autoSorters: number;
+    screenFreezes: number;
   };
   advanceQuestion: (isCorrect: boolean, basePoints: number) => void;
   resetStreak: () => void;
   addLog: (log: SessionLog) => void;
   setTimer: (time: number) => void;
   resetQuiz: () => void;
-  buyItem: (item: 'hints' | 'timeFreezes' | 'shields' | 'sabotagers' | 'decoys' | 'ddosEmps' | 'overclocks', cost: number) => boolean;
+  buyItem: (item: 'hints' | 'timeFreezes' | 'shields' | 'sabotagers' | 'decoys' | 'ddosEmps' | 'overclocks' | 'autoSorters' | 'screenFreezes', cost: number) => boolean;
   executeSabotage: (targetPlayerId: string, socket: any) => void;
   consumeDecoy: () => void;
   consumeItem: (item: keyof QuizState['inventory']) => void;
@@ -59,7 +61,7 @@ export const useQuizStore = create<QuizState>()(
       sessionLogs: [],
       coinsEarned: 0,
       xpEarned: 0,
-      inventory: { hints: 0, timeFreezes: 0, shields: 0, sabotagers: 0, decoys: 0, ddosEmps: 0, overclocks: 0 },
+      inventory: { hints: 0, timeFreezes: 0, shields: 0, sabotagers: 0, decoys: 0, ddosEmps: 0, overclocks: 0, autoSorters: 0, screenFreezes: 0 },
       advanceQuestion: (isCorrect: boolean, basePoints: number) => set((state) => {
         let newStreak = state.streak;
         let newHighestStreak = state.highestStreak;
@@ -219,4 +221,5 @@ export const useQuizStore = create<QuizState>()(
     }
   )
 );
+
 

@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "CYBER EMULATOR - Synthwave Login Portal",
   description: "Retro-futuristic gaming console login portal with interactive parallax graphics",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

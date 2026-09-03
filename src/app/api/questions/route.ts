@@ -6,6 +6,8 @@ import { MongoQuestionRepository } from '@/repositories/MongoQuestionRepository'
 const questionRepository = new MongoQuestionRepository();
 const questionService = new QuestionService(questionRepository);
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/questions - Fetch questions with optional filters
 export async function GET(request: NextRequest) {
   try {

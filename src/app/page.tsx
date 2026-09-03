@@ -24,208 +24,11 @@ import PasswordQuest from '@/components/dashboard/PasswordQuest';
 import InventoryModal from '@/components/dashboard/InventoryModal';
 import { useQuizStore } from '@/store/quizStore';
 
-interface LeaderboardPlayer {
-  rank: number;
-  empId: string;
-  name: string;
-  username: string;
-  role: string;
-  score: number;
-  xp: number;
-  coins: number;
-  badgeColor: string;
-  avatar: AvatarState;
-}
+import { LeaderboardPlayer, FloatingEmoji, FloatingStat } from '@/types/dashboard';
+import { LeaderboardItem, BADGE_COLORS } from '@/components/dashboard/LeaderboardItem';
+import { FullLeaderboardModal } from '@/components/dashboard/FullLeaderboardModal';
 
-interface FloatingEmoji {
-  id: string;
-  empId: string;
-  emoji: string;
-  senderName?: string;
-}
 
-interface FloatingStat {
-  id: string;
-  empId: string;
-  type: 'xp_up' | 'coins_down';
-  amount: number;
-}
-
-const BADGE_COLORS = ['#ff0055', '#f59e0b', '#10b981', '#a855f7', '#3b82f6', '#14b8a6', '#ef4444'];
-
-const RANK_BADGE_STYLES: Record<number, string> = {
-  1: 'bg-gradient-to-br from-yellow-400 to-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.6)]',
-  2: 'bg-gradient-to-br from-zinc-300 to-zinc-400 text-black shadow-[0_0_8px_rgba(200,200,200,0.4)]',
-  3: 'bg-gradient-to-br from-amber-700 to-amber-800 text-white shadow-[0_0_8px_rgba(180,100,40,0.4)]',
-};
-
-const LeaderboardItem = ({ 
-  player, 
-  floatingEmojis, 
-  floatingStats = [],
-  onEmitEmoji, 
-  onScoreBoost,
-  mini = true,
-  selectedTarget,
-  setSelectedTarget
-}: { 
-  player: LeaderboardPlayer; 
-  floatingEmojis: FloatingEmoji[]; 
-  floatingStats?: FloatingStat[];
-  onEmitEmoji: (id: string, emoji: string) => void;
-  onScoreBoost: (id: string) => void;
-  mini?: boolean;
-  selectedTarget?: LeaderboardPlayer | null;
-  setSelectedTarget?: (p: LeaderboardPlayer) => void;
-}) => {
-  const rowEmojis = floatingEmojis.filter((e) => e.empId === player.empId);
-  const rowStats = floatingStats.filter((s) => s.empId === player.empId);
-  const badgeStyle = RANK_BADGE_STYLES[player.rank] || '';
-
-  return (
-    <div
-      key={player.empId} 
-      onClick={() => setSelectedTarget && setSelectedTarget(player)}
-      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${selectedTarget?.empId === player.empId ? 'bg-red-900/40 border border-red-500' : 'bg-[#0a0a0a] border border-white/5 hover:bg-[#111]'} relative`}
-    >
-      <AnimatePresence>
-        {rowEmojis.map((e) => (
-          <motion.div
-            key={e.id}
-            initial={{ y: 0, opacity: 1, scale: 1 }}
-            animate={{ y: -50, opacity: 0, scale: 1.5 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.6, ease: 'easeOut' }}
-            className="absolute right-8 top-0 flex items-center gap-1.5 z-50 pointer-events-none drop-shadow-[0_0_10px_#ff0055]"
-          >
-            <span className="text-2xl">{e.emoji}</span>
-            {e.senderName && (
-              <span className="text-[10px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded border border-[#ff0055]/50 whitespace-nowrap">
-                Boosted by {e.senderName}
-              </span>
-            )}
-          </motion.div>
-        ))}
-
-        {rowStats.map((s) => (
-          <motion.div
-            key={s.id}
-            initial={{ y: 0, opacity: 1, scale: 1 }}
-            animate={{ y: s.type === 'xp_up' ? -40 : 40, opacity: 0, scale: 1.5 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 2, ease: 'easeOut' }}
-            className={`absolute right-12 top-2 flex items-center gap-1 z-50 pointer-events-none font-black font-mono text-lg drop-shadow-[0_0_10px_currentColor] ${s.type === 'xp_up' ? 'text-[#ff0055]' : 'text-yellow-500'}`}
-          >
-            {s.type === 'xp_up' ? '↑' : '↓'} 
-            {s.type === 'xp_up' ? `+${s.amount} XP` : `-${s.amount} COINS`}
-          </motion.div>
-        ))}
-      </AnimatePresence>
-
-      <div className="flex items-center gap-3 w-full">
-        {/* Rank Badge */}
-        <div
-          className={`w-8 h-8 rounded-lg font-mono text-xs font-black flex items-center justify-center shrink-0 ${
-            badgeStyle || 'text-white'
-          }`}
-          style={!badgeStyle ? { backgroundColor: player.badgeColor } : undefined}
-        >
-          #{player.rank}
-        </div>
-
-        {/* Avatar */}
-        <div className={`${
-          mini ? 'w-10 h-10 rounded-full' : 'w-[48px] h-[76px] rounded-xl'
-        } overflow-hidden bg-black/60 border border-white/10 shrink-0 flex items-center justify-center`}>
-          {mini ? (
-            <MiniAvatar avatar={player.avatar} />
-          ) : (
-            <AvatarSVG avatar={player.avatar} size={48} mini={false} />
-          )}
-        </div>
-
-        {/* Name + Username */}
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-sm font-bold text-white leading-tight truncate">
-            {player.name}
-          </span>
-          <span className="text-[10px] font-mono text-zinc-500 truncate">
-            @{player.username}
-          </span>
-        </div>
-
-        {/* XP */}
-        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-          <div className="flex flex-col items-end">
-            <span className="text-sm font-mono font-bold text-[#ff0055] tabular-nums">
-              {(player.xp || 0).toLocaleString()} XP
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const FullLeaderboardModal = ({
-  isOpen,
-  onClose,
-  leaderboard,
-  floatingEmojis,
-  floatingStats,
-  onEmitEmoji,
-  onScoreBoost,
-  selectedTarget,
-  setSelectedTarget
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  leaderboard: LeaderboardPlayer[];
-  floatingEmojis: FloatingEmoji[];
-  floatingStats?: FloatingStat[];
-  onEmitEmoji: (id: string, emoji: string) => void;
-  onScoreBoost: (id: string) => void;
-  selectedTarget: LeaderboardPlayer | null;
-  setSelectedTarget: (p: LeaderboardPlayer) => void;
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[82vh] bg-[#0a030d] border border-[#ff0055]/40 rounded-3xl p-6 flex flex-col shadow-[0_0_50px_rgba(255,0,85,0.2)]">
-        <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#ff0055]/30">
-          <h2 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-[#ff0055]" />
-            FULL LEADERBOARD
-            <span className="text-xs font-mono text-zinc-400 font-normal">({leaderboard.length} operants)</span>
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-[#1e0720] border border-[#ff0055]/30 text-[#ff0055] hover:bg-[#ff0055] hover:text-white transition-all cursor-pointer"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2L14 14M14 2L2 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto pr-1 space-y-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#ff0055 #1e0720' }}>
-          {leaderboard.map((player) => (
-            <LeaderboardItem 
-              key={player.empId}
-              player={player}
-              floatingEmojis={floatingEmojis}
-              floatingStats={floatingStats}
-              onEmitEmoji={onEmitEmoji}
-              onScoreBoost={onScoreBoost}
-              mini={false}
-              selectedTarget={selectedTarget}
-              setSelectedTarget={setSelectedTarget}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default function Phase3RealtimeDashboard() {
   const router = useRouter();
@@ -506,8 +309,6 @@ export default function Phase3RealtimeDashboard() {
     }
   };
 
-  const top5Leaderboard = leaderboard.slice(0, 5);
-
   if (isAuthenticating) {
     return (
       <div className="h-screen w-screen bg-black flex items-center justify-center text-red-500 font-mono tracking-[0.3em]">
@@ -672,7 +473,7 @@ export default function Phase3RealtimeDashboard() {
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-[#ff0055]" />
                 <h3 className="text-xs font-mono font-bold uppercase text-white tracking-wider">
-                  LIVE LEADERBOARD (TOP 5)
+                  LIVE LEADERBOARD
                 </h3>
               </div>
               <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#ff0055]/20 text-[#ff0055] animate-pulse">
@@ -680,30 +481,28 @@ export default function Phase3RealtimeDashboard() {
               </span>
             </div>
 
-            <div className="space-y-2 relative min-h-[280px]">
-              {top5Leaderboard.length === 0 ? (
+            <div className="space-y-2 relative min-h-[280px] max-h-[350px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#ff0055 transparent' }}>
+              {leaderboard.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-[280px] text-zinc-600 font-mono text-xs text-center gap-2">
                   <Trophy className="w-8 h-8 opacity-30" />
                   <p>No players yet. Sign up to claim the #1 spot!</p>
                 </div>
               ) : (
-                top5Leaderboard.map((player) => (
+                leaderboard.map((player) => (
                   <LeaderboardItem
                     key={player.empId}
                     player={player}
                     floatingEmojis={floatingEmojis}
-                    onEmitEmoji={handleEmitEmoji}
-                    onScoreBoost={handleScoreBoost}
                     selectedTarget={selectedTarget}
                     setSelectedTarget={setSelectedTarget}
                   />
                 ))
               )}
             </div>
-            
+
             <button
               onClick={() => setIsFullLeaderboardOpen(true)}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-zinc-800 to-zinc-900 border border-zinc-700 hover:border-[#ff0055]/50 hover:bg-[#1a0515] transition-all text-xs font-bold font-mono tracking-widest text-zinc-300 hover:text-[#ff0055] flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-zinc-800 to-zinc-900 border border-zinc-700 hover:border-[#ff0055]/50 hover:bg-[#1a0515] transition-all text-xs font-bold font-mono tracking-widest text-zinc-300 hover:text-[#ff0055] flex items-center justify-center gap-2 cursor-pointer shadow-md"
             >
               <List className="w-4 h-4" />
               FULL PLAYER LEADERBOARD
@@ -751,14 +550,12 @@ export default function Phase3RealtimeDashboard() {
           </div>
         </div>
       </div>
-      
-      <FullLeaderboardModal 
-        isOpen={isFullLeaderboardOpen} 
-        onClose={() => setIsFullLeaderboardOpen(false)} 
-        leaderboard={leaderboard} 
+      <FullLeaderboardModal
+        isOpen={isFullLeaderboardOpen}
+        onClose={() => setIsFullLeaderboardOpen(false)}
+        leaderboard={leaderboard}
         floatingEmojis={floatingEmojis}
-        onEmitEmoji={handleEmitEmoji}
-        onScoreBoost={handleScoreBoost}
+        floatingStats={floatingStats}
         selectedTarget={selectedTarget}
         setSelectedTarget={setSelectedTarget}
       />

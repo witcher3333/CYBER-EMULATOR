@@ -75,7 +75,7 @@ export const ActivityLog: React.FC<ActivityLogProps> = ({ selectedPlayer, logs }
             <span>{selectedPlayer.department}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-emerald-400 font-bold ml-auto">{selectedPlayer.xp} XP</span>
+            <span className="text-emerald-400 font-bold ml-auto">{selectedPlayer.xp || 0} XP</span>
             <span>{selectedPlayer.coins || 0} COINS</span>
           </div>
           <div className="flex items-center gap-1.5">
